@@ -19,5 +19,5 @@ async fn main() {
     examples::simple_coroutine::test_simple_coroutine();
     
     // 示例 6: 自定义 Waker 示例
-    examples::custom_waker::test_custom_waker();
+    examples::custom_waker::test_custom_waker().await;
 }
