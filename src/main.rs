@@ -1,54 +1,23 @@
-use std::{
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll},
-};
+mod examples;
 
-#[tokio::main(flavor = "multi_thread")]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let fut = MyFuture {};
-    println!("Awaiting fut...");
-    fut.await;
-    println!("Awaiting fut... done!");
-
-    let msg = hello().await; // 像写同步代码一样等待
+    // 示例 1: 基本的 Future 实现
+    examples::basic_future::test_basic_future().await;
+    
+    // 示例 2: 简单的 async 函数
+    let msg = examples::greet::hello().await;
     println!("{msg}");
-
-}
-
-/// 异步函数 `hello` 在编译期会被**展开成一个匿名结构体**，
-/// 而不是面向语言里的 “class”。
-///
-/// 生成的伪代码大致如下：
-/// ```
-/// struct HelloFuture {
-///     state: u8,          // 当前状态（每个 await 点一个编号）
-///     // …局部变量也会变成字段，保证跨 poll 存活
-/// }
-///
-/// impl Future for HelloFuture {
-///     type Output = &'static str;
-///     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>)
-///         -> Poll<Self::Output>
-///     {
-///         match self.state { /* 状态机主体 */ }
-///     }
-/// }
-/// ```
-///
-/// 调用 `hello()` 只是**构造并返回**这个状态机实例；
-/// 真正驱动它跑完的是运行时反复执行的 `Future::poll`。
-async fn hello() -> &'static str {
-    "hello, tokio!"
-}
-
-struct MyFuture {}
-
-impl Future for MyFuture {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // 👇
-        Poll::Ready(())
-    }
+    
+    // 示例 3: 顺序执行
+    examples::greet::test_sequential().await;
+    
+    // 示例 4: 并发执行（即使使用 current_thread，spawn 创建的任务也会并发执行）
+    examples::greet::test_concurrent().await;
+    
+    // 示例 5: SimpleCoroutine（编译器生成的等价代码）
+    examples::simple_coroutine::test_simple_coroutine();
+    
+    // 示例 6: 自定义 Waker 示例
+    examples::custom_waker::test_custom_waker();
 }
