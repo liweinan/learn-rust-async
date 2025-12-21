@@ -6,6 +6,7 @@ use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 pub enum SimpleCoroutine {
     Unresumed,
     Returned,
+    #[warn(unused)]
     Panicked,
 }
 
