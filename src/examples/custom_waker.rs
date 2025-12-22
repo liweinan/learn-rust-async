@@ -61,15 +61,19 @@ impl Future for AsyncTimerFuture {
         } else {
             // 操作未完成，保存 waker 以便后续唤醒
             // 
-            // 优化：只在 waker 不存在时才保存，避免不必要的 clone
-            // - 如果 waker 已经被后台线程 take() 走了，会重新保存一个新的
-            // - 如果 waker 还在，说明上次 poll 时已经保存过，不需要重复保存
-            if state.waker.is_none() {
-                state.waker = Some(cx.waker().clone());
-                println!("[poll] Future 未就绪，保存 waker 并返回 Pending");
-            } else {
-                println!("[poll] Future 未就绪，waker 已存在，返回 Pending");
-            }
+            // 重要：每次 poll 都应该更新 waker，即使 waker 已经存在
+            // 原因：
+            // 1. Future 可能在 executor 的任务之间移动
+            // 2. 每次 poll 时的 cx.waker() 可能指向不同的任务
+            // 3. 如果不更新，后台线程唤醒的可能是旧任务，而不是当前任务
+            // 4. 这会导致 executor 运行错误的任务，或者任务永远不会被唤醒
+            //
+            // 注意：虽然 waker.clone() 看起来有开销，但实际上：
+            // - Waker 的 clone 是轻量级的（通常是引用计数增加）
+            // - 相比任务调度错误的风险，这个开销是可以接受的
+            // - 大多数情况下，poll 只会被调用几次，不会频繁 clone
+            state.waker = Some(cx.waker().clone());
+            println!("[poll] Future 未就绪，保存 waker 并返回 Pending");
             Poll::Pending
         }
     }
