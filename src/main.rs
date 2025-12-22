@@ -20,4 +20,12 @@ async fn main() {
     
     // 示例 6: 自定义 Waker 示例
     examples::custom_waker::test_custom_waker().await;
+    
+    // 示例 7: SimpleExecutor 示例（手动创建 executor）
+    // 注意：SimpleExecutor 是阻塞的，使用 std::thread 在独立线程中运行
+    // 避免阻塞 tokio 运行时，也避免 spawn_blocking 可能带来的线程问题
+    let handle = std::thread::spawn(|| {
+        examples::simple_executor::test_simple_executor();
+    });
+    handle.join().unwrap();
 }
