@@ -79,9 +79,9 @@ impl Future for AsyncTimerFuture {
     }
 }
 
-/// 测试自定义 Waker 的实际用途（使用 tokio 运行时）
+/// 测试自定义 Waker 的实际用途（使用 tokio 运行时，通过 await）
 pub async fn test_custom_waker() {
-    println!("\n=== 自定义 Waker 示例：展示实际用途 ===");
+    println!("\n=== 自定义 Waker 示例：展示实际用途（使用 await） ===");
     
     println!("\n场景：模拟一个异步定时器 Future");
     println!("1. Future 在后台线程中等待 1 秒");
@@ -106,4 +106,46 @@ pub async fn test_custom_waker() {
     println!("- 这样避免了轮询，提高了效率");
     println!("\n注意：在实际使用中，你不需要手动创建 waker，");
     println!("tokio 等运行时会自动处理。这个例子展示了底层机制。");
+}
+
+/// 测试自定义 Waker 的实际用途（使用 tokio 的 block_on）
+///
+/// 这个例子展示了如何显式使用 `tokio::runtime::Runtime::block_on()` 来运行 future。
+/// 与 `test_custom_waker()` 的区别是：
+/// - `test_custom_waker()` 使用 `await`，需要在 async 上下文中运行
+/// - `test_custom_waker_with_block_on()` 使用 `block_on`，可以在非 async 函数中运行
+///
+/// 注意：这个函数需要在独立线程中运行，因为不能在运行时内部再创建运行时。
+/// 如果已经在 tokio 运行时中，可以使用 `Handle::current().block_on()`。
+pub fn test_custom_waker_with_block_on() {
+    println!("\n=== 自定义 Waker 示例：使用 tokio::runtime::Runtime::block_on() ===");
+    
+    println!("\n场景：显式使用 tokio 的 Runtime::block_on() 运行 future");
+    println!("1. 创建 tokio Runtime");
+    println!("2. 使用 block_on 运行 AsyncTimerFuture");
+    println!("3. block_on 会阻塞当前线程，直到 future 完成");
+    println!("4. 这与 SimpleExecutor 的 block_on 类似，但使用的是 tokio 的运行时\n");
+    
+    // 创建 tokio 运行时
+    // 注意：如果在 tokio 运行时内部调用此函数，会报错
+    // 此时应该使用 Handle::current().block_on() 或 spawn_blocking
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    
+    let future = AsyncTimerFuture::new(Duration::from_secs(1));
+    
+    let start = std::time::Instant::now();
+    // 使用 block_on 运行 future
+    let result = rt.block_on(future);
+    let elapsed = start.elapsed();
+    
+    println!("\n结果: {}", result);
+    println!("总耗时: {:?} (包含等待时间)", elapsed);
+    
+    println!("\n关键点：");
+    println!("- Runtime::block_on() 会阻塞当前线程，直到 future 完成");
+    println!("- 这与 SimpleExecutor::block_on() 的行为类似");
+    println!("- 但 tokio 的 Runtime 支持多线程和事件驱动，可以并发执行多个任务");
+    println!("- 在实际应用中，通常使用 #[tokio::main] 或 Runtime::new().unwrap().block_on()");
+    println!("- 在 async 函数中，使用 await 更常见，不需要显式创建 Runtime");
+    println!("\n注意：如果在 tokio 运行时内部，应该使用 Handle::current().block_on()");
 }
