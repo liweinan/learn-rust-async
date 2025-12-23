@@ -6,8 +6,8 @@ use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 pub enum SimpleCoroutine {
     Unresumed,
     Returned,
-    #[warn(unused)]
-    Panicked,
+    #[allow(dead_code)]
+    Panicked,  // 这个 variant 确实不会被使用，保留 allow(dead_code)
 }
 
 impl Future for SimpleCoroutine {
