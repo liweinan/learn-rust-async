@@ -45,29 +45,10 @@ impl Future for HelloFuture {
 
 /// 演示在 poll 方法内部访问和修改 self 的不同方式
 pub fn test_pin_and_poll_unpin() {
-    // 创建一个简单的 waker（用于演示，实际使用中由 executor 提供）
-    // 注意：RawWaker::new 和 RawWakerVTable::new 本身不需要 unsafe
-    // 但是 Waker::from_raw 需要 unsafe，因为从原始指针创建 Waker 是不安全的操作
-    fn create_waker() -> Waker {
-        use std::task::{RawWaker, RawWakerVTable};
-        // 这些回调函数需要是 unsafe fn，因为 RawWakerVTable 要求这样的签名
-        // 但定义这些函数本身不需要 unsafe 块
-        unsafe fn clone(_: *const ()) -> RawWaker {
-            RawWaker::new(std::ptr::null(), &VTABLE)
-        }
-        unsafe fn wake(_: *const ()) {}
-        unsafe fn wake_by_ref(_: *const ()) {}
-        unsafe fn drop(_: *const ()) {}
-        
-        // RawWakerVTable::new 不需要 unsafe
-        const VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
-        // RawWaker::new 不需要 unsafe
-        let raw_waker = RawWaker::new(std::ptr::null(), &VTABLE);
-        // Waker::from_raw 需要 unsafe，因为从原始指针创建 Waker 需要保证内存安全
-        unsafe { Waker::from_raw(raw_waker) }
-    }
-    
-    let waker = create_waker();
+    // 使用 Rust 标准库提供的 noop waker（Rust 1.85.0+）
+    // 这是一个不执行任何操作的 waker，非常适合测试和演示
+    // 不需要手动创建 RawWaker 和 RawWakerVTable，也不需要 unsafe
+    let waker = Waker::noop();
     let mut cx = Context::from_waker(&waker);
     
     // 测试 HelloFuture：使用 get_mut()
