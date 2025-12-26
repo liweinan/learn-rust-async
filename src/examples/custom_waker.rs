@@ -25,6 +25,8 @@ impl AsyncTimerFuture {
     pub fn new(duration: Duration) -> Self {
         let shared_state = Arc::new(Mutex::new(SharedState {
             completed: false,
+            // 注意：waker 初始化为 None，此时还没有 Context，无法获取 waker
+            // waker 会在第一次 poll() 时被注入（见 poll() 方法的注释）
             waker: None,
         }));
 
@@ -39,6 +41,7 @@ impl AsyncTimerFuture {
             state.completed = true;
             
             // 关键：调用 waker 通知 executor 可以重新 poll 了
+            // 注意：此时 waker 应该已经被 poll() 方法注入（见 poll() 方法的注释）
             if let Some(waker) = state.waker.take() {
                 println!("[后台线程] 异步操作完成，唤醒 executor...");
                 waker.wake();
@@ -49,7 +52,7 @@ impl AsyncTimerFuture {
     }
 }
 
-impl Future for AsyncTimerFuture {
+impl Future for AsyncTimerFuture { 
     type Output = &'static str;
     
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -61,14 +64,45 @@ impl Future for AsyncTimerFuture {
         } else {
             // 操作未完成，保存 waker 以便后续唤醒
             // 
-            // 重要：每次 poll 都应该更新 waker，即使 waker 已经存在
-            // 原因：
-            // 1. Future 可能在 executor 的任务之间移动
-            // 2. 每次 poll 时的 cx.waker() 可能指向不同的任务
-            // 3. 如果不更新，后台线程唤醒的可能是旧任务，而不是当前任务
-            // 4. 这会导致 executor 运行错误的任务，或者任务永远不会被唤醒
+            // # Waker 注入时机和流程
             //
-            // 注意：虽然 waker.clone() 看起来有开销，但实际上：
+            // ## 1. Waker 注入时机
+            // - **不是在 new() 时注入**：new() 时 waker 初始化为 None，此时还没有 Context
+            // - **在第一次 poll() 时注入**：当 executor（如 tokio）第一次调用 poll() 时注入
+            // - **每次 poll() 都会更新**：确保唤醒的是当前任务（见下面的说明）
+            //
+            // ## 2. 谁负责注入
+            // - **Future 的 poll() 方法负责注入**：这里执行 `state.waker = Some(cx.waker().clone())`
+            // - **tokio 负责提供 waker**：通过 Context 传入 `cx.waker()`
+            // - **tokio 负责调用 poll()**：executor 调用 poll() 时传入 Context
+            //
+            // ## 3. 完整流程
+            // ```
+            // 1. new() 创建 future
+            //    └─> shared_state.waker = None
+            //    └─> 启动后台线程（等待中）
+            //
+            // 2. tokio executor 第一次调用 poll()
+            //    └─> 传入 Context（包含 waker）
+            //    └─> poll() 中：state.waker = Some(cx.waker().clone())  ← 注入时机
+            //    └─> 返回 Poll::Pending
+            //
+            // 3. 后台线程完成等待
+            //    └─> state.waker.take() 获取 waker
+            //    └─> waker.wake() 通知 executor
+            //
+            // 4. tokio executor 收到通知，再次调用 poll()
+            //    └─> 此时 completed = true
+            //    └─> 返回 Poll::Ready
+            // ```
+            //
+            // ## 4. 为什么每次 poll 都要更新 waker
+            // - Future 可能在 executor 的任务之间移动
+            // - 每次 poll 时的 cx.waker() 可能指向不同的任务
+            // - 如果不更新，后台线程唤醒的可能是旧任务，而不是当前任务
+            // - 这会导致 executor 运行错误的任务，或者任务永远不会被唤醒
+            //
+            // ## 5. 性能考虑
             // - Waker 的 clone 是轻量级的（通常是引用计数增加）
             // - 相比任务调度错误的风险，这个开销是可以接受的
             // - 大多数情况下，poll 只会被调用几次，不会频繁 clone
